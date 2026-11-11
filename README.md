@@ -16,7 +16,7 @@ Pin written notes to a live web page in mobile view, capture it, and publish a s
 
 1. Open the page, for example `https://www.nbcnews.com/specials/vaccine-divide/index.html`.
 2. In the side panel click **Start markup on this page** and allow access to the site.
-3. Click **Phone view** (390px by default). The tab reloads at phone size. Chrome shows a "debugging this browser" bar while it's on; that's expected.
+3. Notes are filed under **Mobile** or **Desktop** by the tab's width (under 768px is Mobile). For mobile, use DevTools device mode or the panel's **Phone view** (390px by default; Chrome shows a "debugging this browser" bar while it's on). For desktop, use the normal window.
 4. Pick a tool and category, then click the page:
    - **Pin**: click a headline or paragraph. The note records its font, size/line height, weight, tracking and margins.
    - **Highlight / Box**: drag over an area.
@@ -28,7 +28,7 @@ Pin written notes to a live web page in mobile view, capture it, and publish a s
 
 ## Share
 
-1. **Capture page** (scroll and stitch is the default; use "Use my own screenshot" if a page misbehaves).
+1. **Capture** each view while the tab is at that width (scroll and stitch is the default; use "Use my own screenshot" if a page misbehaves). Both views go into one review link with a Mobile / Desktop switch.
 2. **Publish to GitHub**. The link is copied to your clipboard. Publishing again updates the same link.
 3. **Copy Slack list** gives a numbered list with the link at the top.
 

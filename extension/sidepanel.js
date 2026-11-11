@@ -19,8 +19,13 @@ const UI_KEY = "pm:ui", GH_KEY = "pm:gh";
 const store = chrome.storage.local;
 
 let tab = null, key = null, review = null, ui = { tool: "pin", cat: "typography", sticker: STICKERS[0], selected: null, active: true };
-let gh = { owner: "", repo: "", branch: "main", folder: "reviews", token: "" };
-let capMeta = null;               // {at, tiles, docH, vpW}
+let gh = { owner: "hihyning", repo: "page-markup", branch: "main", folder: "reviews", token: "" };
+let capMetas = {};                // per view: {at, tiles, docH, vpW, lw, geoms}
+let live = null;                  // what the tab reports: {lw, view}
+let listView = "current";         // notes list filter: current | all | mobile | desktop
+const VIEWS = [["mobile", "Mobile"], ["desktop", "Desktop"]];
+const VIEW_LABEL = Object.fromEntries(VIEWS);
+const viewOf = n => n.view || "mobile";
 const attached = new Set();       // tab ids with debugger attached
 const phoneTabs = new Set();
 
@@ -29,9 +34,11 @@ const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "
 let toastT; function toast(m, ms = 2800) { const t = $("#toast"); t.textContent = m; t.hidden = false; clearTimeout(toastT); toastT = setTimeout(() => t.hidden = true, ms); }
 const wait = ms => new Promise(r => setTimeout(r, ms));
 const keyFor = url => { try { const u = new URL(url); return "pm:" + u.origin + u.pathname; } catch { return null; } };
-const capKey = () => "pmcap:" + key.slice(3);
+const capKey = view => "pmcap:" + key.slice(3) + ":" + view;
 function originPattern(url) { const u = new URL(url); return u.origin + "/*"; }
-const ordered = () => [...(review?.notes || [])].sort((a, b) => (a.y - b.y) || (a.created - b.created));
+const ordered = view => [...(review?.notes || [])].filter(n => !view || viewOf(n) === view).sort((a, b) => (a.y - b.y) || (a.created - b.created));
+// numbers restart for each view, matching the marks drawn on that view
+function numbering() { const m = {}; for (const [v] of VIEWS) ordered(v).forEach((n, i) => m[n.id] = i + 1); return m; }
 async function send(msg) { return chrome.tabs.sendMessage(tab.id, msg); }
 async function pingPage() { try { return await send({ type: "ping" }); } catch { return null; } }
 async function mutate(fn) {
@@ -60,19 +67,30 @@ async function refreshTab() {
   $("#pageInfo").textContent = tab ? (tab.title || tab.url) : "No page";
   if (!ok) { $("#workspace").hidden = true; $("#startBlock").hidden = false; $("#startBtn").disabled = true; $("#startHint").textContent = "Open a web page (http or https) to mark it up."; return; }
   $("#startBtn").disabled = false;
-  const got = await store.get([key, UI_KEY, GH_KEY, capKey() + ":meta"]);
+  const got = await store.get([key, UI_KEY, GH_KEY, capKey("mobile") + ":meta", capKey("desktop") + ":meta"]);
   review = got[key] || null;
   if (got[UI_KEY]) ui = { ...ui, ...got[UI_KEY] };
   if (got[GH_KEY]) gh = { ...gh, ...got[GH_KEY] };
-  capMeta = got[capKey() + ":meta"] || null;
-  const live = await pingPage();
+  capMetas = { mobile: got[capKey("mobile") + ":meta"] || null, desktop: got[capKey("desktop") + ":meta"] || null };
+  live = await pingPage();
   const started = !!live || !!review;
   $("#startBlock").hidden = !!live && ui.active;
   $("#workspace").hidden = !started;
   $("#startBtn").textContent = review ? "Resume markup on this page" : "Start markup on this page";
   $("#startHint").textContent = review ? `${review.notes.length} saved note${review.notes.length === 1 ? "" : "s"} for this page.` : "Opens a markup layer on the current tab. Chrome asks once per site for permission.";
-  fillFields(); renderControls(); renderList(); renderCapture();
+  fillFields(); renderControls(); renderView(); renderList(); renderCapture();
 }
+function renderView() {
+  const el = $("#viewInfo");
+  if (!live) { el.textContent = ""; return; }
+  el.innerHTML = `This tab is <b>${live.lw}px</b> wide, so new notes go to <b>${VIEW_LABEL[live.view]}</b>. ${live.view === "mobile" ? "Exit phone view (or DevTools device mode) for Desktop." : "Use Phone view or DevTools device mode for Mobile."}`;
+}
+// notice when the tab changes width (DevTools device mode, window resize)
+setInterval(async () => {
+  if (document.hidden || !tab || $("#workspace").hidden) return;
+  const p = await pingPage();
+  if (p && (!live || p.lw !== live.lw)) { live = p; renderView(); renderList(); renderCapture(); }
+}, 1500);
 chrome.tabs.onActivated.addListener(refreshTab);
 chrome.tabs.onUpdated.addListener(async (id, info, t) => {
   if (!tab || id !== tab.id) return;
@@ -114,7 +132,7 @@ $("#stopBtn").addEventListener("click", async () => { setUI({ active: false }); 
 let clearArmed = 0;
 $("#clearBtn").addEventListener("click", async () => {
   if (Date.now() - clearArmed > 4000) { clearArmed = Date.now(); $("#clearBtn").textContent = "Click again to delete all notes"; setTimeout(() => $("#clearBtn").textContent = "Delete all notes for this page", 4000); return; }
-  await mutate(r => { r.notes = []; }); await store.remove([capKey() + ":meta", capKey() + ":tiles"]); capMeta = null; renderCapture();
+  await mutate(r => { r.notes = []; }); await store.remove(VIEWS.flatMap(([v]) => [capKey(v) + ":meta", capKey(v) + ":tiles"])); capMetas = {}; renderCapture();
   $("#clearBtn").textContent = "Delete all notes for this page"; toast("All notes for this page deleted");
 });
 
@@ -177,17 +195,20 @@ function renderControls() {
 
 /* ---------- notes list ---------- */
 function renderList() {
-  const list = $("#list"), items = ordered();
+  const list = $("#list"), cur = live?.view || "mobile", fv = listView === "current" ? cur : listView;
+  const items = fv === "all" ? [...ordered("mobile"), ...ordered("desktop")] : ordered(fv), nums = numbering();
+  $("#viewTabs").innerHTML = [["current", `This view (${VIEW_LABEL[cur]})`], ["all", "All"], ...VIEWS.filter(([v]) => v !== cur).map(([v, l]) => [v, l])]
+    .map(([v, l]) => `<button type="button" data-v="${v}" aria-pressed="${v === listView}">${l} <span>${v === "all" ? (review?.notes.length || 0) : ordered(v === "current" ? cur : v).length}</span></button>`).join("");
   const act = document.activeElement, keepId = act?.closest?.(".note")?.dataset.id, keepF = act?.dataset?.f, caret = act?.selectionStart;
   $("#count").textContent = items.length ? `${items.filter(n => !n.done).length} open` : "";
   $("#counts").innerHTML = CATS.map(([id, l]) => { const k = items.filter(n => n.cat === id && !n.done).length; return k ? `<span class="chip" style="--c:var(--c-${id})">${l} ${k}</span>` : ""; }).join("");
-  if (!items.length) { list.innerHTML = `<div class="empty">No notes yet. Pick Pin and click a headline or paragraph on the page.</div>`; return; }
-  list.innerHTML = items.map((n, i) => `
+  if (!items.length) { list.innerHTML = `<div class="empty">${review?.notes.length ? `No ${fv === "all" ? "" : VIEW_LABEL[fv] + " "}notes yet.` : "No notes yet. Pick Pin and click a headline or paragraph on the page."}</div>`; return; }
+  list.innerHTML = items.map(n => `
     <div class="note${n.id === ui.selected ? " sel" : ""}${n.done ? " done" : ""}" data-id="${n.id}" style="--c:var(--c-${n.cat})">
-      <div class="num">${i + 1}</div>
-      <div class="meta"><span class="k">${CAT_LABEL[n.cat]}</span><span>${n.kind === "sticker" ? "Sticker · " + esc(n.sticker) : KIND[n.kind]}</span>${n.element ? `<span>${esc(n.element)}</span>` : ""}</div>
+      <div class="num">${nums[n.id]}</div>
+      <div class="meta"><span class="vw">${VIEW_LABEL[viewOf(n)]}</span><span class="k">${CAT_LABEL[n.cat]}</span><span>${n.kind === "sticker" ? "Sticker · " + esc(n.sticker) : KIND[n.kind]}</span>${n.element ? `<span>${esc(n.element)}</span>` : ""}</div>
       ${n.styles ? `<div class="spec">${esc(n.styles)}${n.spacing ? "<br>" + esc(n.spacing) : ""}</div>` : ""}
-      <textarea data-f="note" aria-label="Note ${i + 1}" placeholder="What should change?">${esc(n.note)}</textarea>
+      <textarea data-f="note" aria-label="${VIEW_LABEL[viewOf(n)]} note ${nums[n.id]}" placeholder="What should change?">${esc(n.note)}</textarea>
       <div class="fromto"><input data-f="from" aria-label="Current value" placeholder="Current" value="${esc(n.from)}"><span>→</span><input data-f="to" aria-label="Suggested value" placeholder="Suggested" value="${esc(n.to)}"></div>
       <div class="acts">
         <select data-f="cat" aria-label="Category">${CATS.map(([id, l]) => `<option value="${id}"${id === n.cat ? " selected" : ""}>${l}</option>`).join("")}</select>
@@ -219,6 +240,8 @@ $("#list").addEventListener("focusin", e => { const c = e.target.closest(".note"
 $("#list").addEventListener("click", async e => {
   const a = e.target.dataset.act; if (!a) return;
   const id = e.target.closest(".note").dataset.id;
+  const note = review.notes.find(x => x.id === id);
+  if (a === "show" && live && note && viewOf(note) !== live.view) { toast(`This note is on the ${VIEW_LABEL[viewOf(note)]} view. Switch the tab to ${viewOf(note) === "mobile" ? "phone width" : "desktop width"} to see it.`, 4500); return; }
   if (a === "show") { setUI({ selected: id }); try { await send({ type: "scrollTo", id }); } catch { toast("Start markup on this page to jump to the note."); } }
   if (a === "done") await mutate(r => { const n = r.notes.find(x => x.id === id); if (n) n.done = !n.done; });
   if (a === "del") { await mutate(r => { r.notes = r.notes.filter(x => x.id !== id); }); if (ui.selected === id) setUI({ selected: null }); }
@@ -227,20 +250,22 @@ $("#list").addEventListener("click", async e => {
 
 /* ---------- capture ---------- */
 function renderCapture() {
-  if (!capMeta) { $("#capStatus").textContent = "Not captured yet. Capture after you've placed your notes."; $("#linkBox").hidden = !review?.publishedUrl; }
-  else {
-    const d = new Date(capMeta.at);
-    $("#capStatus").textContent = `Captured ${d.toLocaleString([], { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })} · ${capMeta.vpW}px wide · ${Math.round(capMeta.docH).toLocaleString()}px tall · ${capMeta.tiles} image${capMeta.tiles === 1 ? "" : "s"}.`;
-  }
+  const cur = live?.view;
+  $("#capStatus").innerHTML = VIEWS.map(([v, l]) => {
+    const m = capMetas[v], k = ordered(v).length;
+    const st = m ? `captured ${new Date(m.at).toLocaleString([], { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })} at ${m.vpW}px` : (k ? "not captured yet" : "no notes");
+    return `<span class="capline${m ? " ok" : k ? " todo" : ""}"><b>${l}</b> · ${k} note${k === 1 ? "" : "s"} · ${st}</span>`;
+  }).join("");
+  $("#captureBtn").textContent = cur ? `Capture ${VIEW_LABEL[cur]} view` : "Capture page";
   if (review?.publishedUrl) { $("#linkBox").hidden = false; $("#liveLink").href = review.publishedUrl; $("#liveLink").textContent = review.publishedUrl; }
   else $("#linkBox").hidden = true;
 }
 function progress(p) { const b = $("#progress"); b.hidden = p == null; if (p != null) b.firstElementChild.style.width = Math.round(p * 100) + "%"; }
 
-async function saveCapture(tiles, info, geoms) {
-  const meta = { at: Date.now(), tiles: tiles.length, docH: info.docH, docW: info.docW, vpW: info.vpW, lw: info.lw, geoms };
-  await store.set({ [capKey() + ":tiles"]: tiles, [capKey() + ":meta"]: meta });
-  capMeta = meta; renderCapture();
+async function saveCapture(view, tiles, info, geoms) {
+  const meta = { at: Date.now(), tiles: tiles.length, docH: info.docH, docW: info.docW, vpW: info.vpW, lw: info.lw, view, geoms };
+  await store.set({ [capKey(view) + ":tiles"]: tiles, [capKey(view) + ":meta"]: meta });
+  capMetas[view] = meta; renderCapture();
 }
 async function captureStitch() {
   await attach(tab.id);
@@ -286,33 +311,39 @@ $("#captureBtn").addEventListener("click", async () => {
     if (!(await pingPage())) throw new Error("Start markup on this page first.");
     await send({ type: "geoms" });
     const { tiles, info } = mode === "single" ? await captureSingle() : await captureStitch();
-    await saveCapture(tiles, info, info.geoms); // positions measured during capture, same layout as the images
-    toast(`Captured ${tiles.length} image${tiles.length === 1 ? "" : "s"}. Ready to publish.`);
+    await saveCapture(info.view, tiles, info, info.geoms); // positions measured during capture, same layout as the images
+    const other = info.view === "mobile" ? "desktop" : "mobile";
+    toast(`${VIEW_LABEL[info.view]} view captured.${ordered(other).length && !capMetas[other] ? ` Capture the ${VIEW_LABEL[other]} view too before publishing.` : " Ready to publish."}`, 4000);
   } catch (e) {
     toast("Capture failed: " + (e.message || e) + (String(e.message || e).includes("attach") ? " Close DevTools on this tab and try again." : ""), 6000);
-  } finally { btn.disabled = false; btn.textContent = "Capture page"; progress(null); }
+  } finally { btn.disabled = false; progress(null); renderCapture(); }
 });
 $("#fileIn").addEventListener("change", async e => {
   const f = e.target.files[0]; e.target.value = ""; if (!f) return;
   const src = await new Promise(r => { const fr = new FileReader(); fr.onload = () => r(fr.result); fr.readAsDataURL(f); });
   const im = new Image(); await new Promise(r => { im.onload = r; im.src = src; });
-  const vpW = review?.vp || 390, h = im.naturalHeight * vpW / im.naturalWidth;
-  let geoms = [], lw = vpW;
-  try { const g = await send({ type: "geoms" }); geoms = g.geoms; lw = g.lw; if (Math.abs(g.vp - vpW) > 2) toast(`The page is ${g.vp}px wide but your screenshot is set to ${vpW}px. Turn on Phone view so the notes line up.`, 6000); } catch { }
-  await saveCapture([{ src, y: 0, h }], { docH: h, docW: vpW, vpW, lw }, geoms);
-  toast("Screenshot attached to this review");
+  let geoms = [], lw = live?.lw || 390, view = live?.view || "mobile";
+  try { const g = await send({ type: "geoms" }); geoms = g.geoms; lw = g.lw; view = g.view; } catch { }
+  const h = im.naturalHeight * lw / im.naturalWidth;
+  await saveCapture(view, [{ src, y: 0, h }], { docH: h, docW: lw, vpW: lw, lw }, geoms);
+  toast(`Screenshot attached to the ${VIEW_LABEL[view]} view. It should be ${lw}px wide in CSS pixels (any device scale) so the notes line up.`, 5000);
 });
 
 /* ---------- export ---------- */
 function slackList(url) {
-  const items = ordered(), open = items.filter(n => !n.done), L = [];
+  const nums = numbering(), open = (review?.notes || []).filter(n => !n.done), L = [];
   L.push(`*${review?.title || tab.title}*`);
   if (url) L.push(`Review with notes on the page: ${url}`);
-  L.push(`Page: ${review?.url || tab.url} · mobile ${review?.vp || 390}px · ${open.length} open note${open.length === 1 ? "" : "s"}`);
-  for (const [id, label] of CATS) {
-    const g = items.map((n, i) => [n, i + 1]).filter(([n]) => n.cat === id && !n.done);
+  L.push(`Page: ${review?.url || tab.url} · ${open.length} open note${open.length === 1 ? "" : "s"}`);
+  for (const [v, vl] of VIEWS) {
+   const items = ordered(v).filter(n => !n.done);
+   if (!items.length) continue;
+   const w = capMetas[v]?.vpW || items[0].lw;
+   L.push(""); L.push(`*— ${vl}${w ? ` (${w}px)` : ""} —*`);
+   for (const [id, label] of CATS) {
+    const g = items.map(n => [n, nums[n.id]]).filter(([n]) => n.cat === id);
     if (!g.length) continue;
-    L.push(""); L.push(`*${label} (${g.length})*`);
+    L.push(`_${label} (${g.length})_`);
     for (const [n, num] of g) {
       const tag = n.kind === "sticker" ? `[${n.sticker}] ` : n.kind === "measure" ? `[gap ${n.from}] ` : "";
       let line = `• ${num}. ${tag}${(n.note || "(no note)").trim().replace(/\s*\n\s*/g, " ")}`;
@@ -321,6 +352,7 @@ function slackList(url) {
       if (n.excerpt) line += ` _(“${n.excerpt.slice(0, 40)}${n.excerpt.length > 40 ? "…" : ""}”)_`;
       L.push(line);
     }
+   }
   }
   return L.join("\n");
 }
@@ -329,27 +361,26 @@ $("#copySlack").addEventListener("click", () => copyText(slackList(review?.publi
 $("#copyLink").addEventListener("click", () => copyText(review.publishedUrl, "Link copied"));
 
 async function buildHtml() {
-  if (!capMeta) throw new Error("Capture the page first.");
-  const got = await store.get(capKey() + ":tiles");
-  const tiles = got[capKey() + ":tiles"];
-  if (!tiles?.length) throw new Error("The capture is missing. Capture the page again.");
-  let geoms = capMeta.geoms || [];
-  // notes added after the capture get placed from the live page, but only if its layout width still matches
-  try {
-    const g = await send({ type: "geoms" });
-    if (g.lw === capMeta.lw) geoms = g.geoms;
-  } catch { }
-  const gmap = Object.fromEntries(geoms.map(g => [g.id, g.geom]));
-  const items = ordered();
-  const notes = items.map((n, i) => ({
-    n: i + 1, id: n.id, kind: n.kind, cat: n.cat, sticker: n.sticker || null, note: n.note || "", from: n.from || "", to: n.to || "",
+  const views = {}, gmap = {};
+  for (const [v] of VIEWS) {
+    const meta = capMetas[v]; if (!meta) continue;
+    const got = await store.get(capKey(v) + ":tiles");
+    const tiles = got[capKey(v) + ":tiles"]; if (!tiles?.length) continue;
+    let geoms = meta.geoms || [];
+    // notes added after the capture get placed from the live page, but only if its layout width still matches
+    try { const g = await send({ type: "geoms" }); if (g.view === v && g.lw === meta.lw) geoms = g.geoms; } catch { }
+    for (const g of geoms) gmap[g.id] = g.geom;
+    views[v] = { vp: meta.vpW, docH: meta.docH, capturedAt: meta.at, tiles };
+  }
+  if (!Object.keys(views).length) throw new Error("Capture the page first.");
+  const nums = numbering();
+  const notes = [...ordered("mobile"), ...ordered("desktop")].filter(n => views[viewOf(n)]).map(n => ({
+    n: nums[n.id], id: n.id, view: viewOf(n), kind: n.kind, cat: n.cat, sticker: n.sticker || null, note: n.note || "", from: n.from || "", to: n.to || "",
     element: n.element || "", styles: n.styles || "", spacing: n.spacing || "", excerpt: n.excerpt || "", done: !!n.done, geom: gmap[n.id] || null
   }));
-  const missing = notes.filter(n => !n.geom).length;
-  const data = {
-    title: review?.title || tab.title, url: review?.url || tab.url, vp: capMeta.vpW, docH: capMeta.docH,
-    capturedAt: capMeta.at, publishedAt: Date.now(), tiles, notes
-  };
+  const uncaptured = (review?.notes || []).filter(n => !views[viewOf(n)]).length;
+  const missing = notes.filter(n => !n.geom).length + uncaptured;
+  const data = { title: review?.title || tab.title, url: review?.url || tab.url, publishedAt: Date.now(), views, notes };
   const tpl = await (await fetch(chrome.runtime.getURL("viewer.html"))).text();
   const json = JSON.stringify(data).replace(/</g, "\\u003c").replace(/\u2028/g, "\\u2028").replace(/\u2029/g, "\\u2029");
   const html = tpl.replace("__PM_TITLE__", esc(data.title)).replace("__PM_DATA__", () => json);
@@ -388,7 +419,7 @@ $("#publishBtn").addEventListener("click", async () => {
     const url = pagesUrl(path);
     await mutate(r => { r.slug = slug; r.publishedUrl = url; r.publishedAt = Date.now(); });
     renderCapture();
-    await copyText(url, missing ? `Published and link copied. ${missing} note${missing === 1 ? " was" : "s were"} added after the capture, so capture again to place ${missing === 1 ? "it" : "them"}.` : (sha ? "Updated. Same link, copied to clipboard." : "Published. Link copied to clipboard."));
+    await copyText(url, missing ? `Published and link copied. ${missing} note${missing === 1 ? " was" : "s were"} missing from the review: they were added after the last capture or their view isn't captured. Capture again to include ${missing === 1 ? "it" : "them"}.` : (sha ? "Updated. Same link, copied to clipboard." : "Published. Link copied to clipboard."));
   } catch (e) { toast("Publish failed: " + (e.message || e), 6000); }
   finally { btn.disabled = false; btn.textContent = "Publish to GitHub"; }
 });
@@ -402,5 +433,6 @@ $("#downloadBtn").addEventListener("click", async () => {
   } catch (e) { toast(e.message || String(e)); }
 });
 
+$("#viewTabs").addEventListener("click", e => { const b = e.target.closest("button"); if (b) { listView = b.dataset.v; renderList(); } });
 buildControls();
 refreshTab();

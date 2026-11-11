@@ -150,8 +150,13 @@
     return { x: Math.min(a.x, b.x), y: Math.min(a.y, b.y), w: Math.abs(b.x - a.x), h: Math.abs(b.y - a.y), lost: !a.ok || !b.ok };
   }
   const topY = g => !g ? 0 : g.y ?? Math.min(g.y1, g.y2);
+  // Notes belong to the layout they were placed in: under 768px wide is Mobile, otherwise Desktop.
+  const layoutW = () => document.documentElement.clientWidth;
+  const currentView = () => layoutW() < 768 ? "mobile" : "desktop";
+  const viewOf = n => n.view || "mobile";
   function ordered() {
-    return [...(review?.notes || [])].sort((p, q) => (p.y - q.y) || (p.created - q.created));
+    const v = currentView();
+    return [...(review?.notes || [])].filter(n => viewOf(n) === v).sort((p, q) => (p.y - q.y) || (p.created - q.created));
   }
 
   /* ---------- render ---------- */
@@ -228,7 +233,7 @@
     if (measureFirst) { const r = docRect(measureFirst); el("rect", { x: r.x, y: r.y, width: r.w, height: r.h, fill: CAT_COLORS[ui.cat], "fill-opacity": .15, stroke: CAT_COLORS[ui.cat], "stroke-width": 2 }, svg); }
     const names = { browse: "Browsing", pin: "Pin", highlight: "Highlight", box: "Box", arrow: "Arrow", measure: measureFirst ? "Measure: now click the second element" : "Measure: click the first element", sticker: "Sticker · " + ui.sticker };
     pill.querySelector("i").style.background = CAT_COLORS[ui.cat];
-    pillText.textContent = `Markup: ${names[ui.tool] || ui.tool}`;
+    pillText.textContent = `${currentView() === "mobile" ? "Mobile" : "Desktop"} ${layoutW()}px · ${names[ui.tool] || ui.tool}`;
     root.querySelector(".pillbrowse").textContent = ui.tool === "browse" ? "P to pin" : "Esc to browse";
   }
 
@@ -236,7 +241,7 @@
   const uid = () => Math.random().toString(36).slice(2, 9) + Date.now().toString(36).slice(-4);
   function newNote(base, infoEl) {
     const info = infoEl ? typeInfo(infoEl) : null;
-    const n = { id: uid(), cat: ui.cat, note: "", from: "", to: "", done: false, created: Date.now(), ...base };
+    const n = { id: uid(), cat: ui.cat, note: "", from: "", to: "", done: false, created: Date.now(), view: currentView(), lw: layoutW(), ...base };
     if (info) { n.element = info.tag; n.styles = info.type; n.spacing = info.spacing; n.excerpt = info.text; }
     n.y = topY(geomOf(n));
     return n;
@@ -362,12 +367,12 @@
   chrome.runtime.onMessage.addListener((msg, _s, reply) => {
     (async () => {
       switch (msg.type) {
-        case "ping": return { ok: true, url: location.href, title: document.title, vp: innerWidth };
+        case "ping": return { ok: true, url: location.href, title: document.title, vp: innerWidth, lw: layoutW(), view: currentView() };
         case "geoms": {
           // refresh stored y so numbering follows the page top to bottom
           const g = allGeoms();
           await mutate(r => r.notes.forEach(n => { const m = g.find(x => x.id === n.id); if (m?.geom) n.y = topY(m.geom); }));
-          return { geoms: allGeoms(), docW: document.documentElement.scrollWidth, docH: document.documentElement.scrollHeight, vp: innerWidth, lw: document.documentElement.clientWidth };
+          return { geoms: allGeoms(), docW: document.documentElement.scrollWidth, docH: document.documentElement.scrollHeight, vp: innerWidth, lw: layoutW(), view: currentView() };
         }
         case "scrollTo": {
           const n = review.notes.find(x => x.id === msg.id), g = n && geomOf(n);
@@ -380,7 +385,7 @@
           const step = Math.max(200, innerHeight * 0.8);
           for (let y = 0, i = 0; y < document.documentElement.scrollHeight && i < 120; y += step, i++) { scrollTo(0, y); await wait(msg.lazyDelay || 140); }
           scrollTo(0, 0); await wait(500);
-          return { docH: document.documentElement.scrollHeight, docW: document.documentElement.scrollWidth, vpH: innerHeight, vpW: document.documentElement.clientWidth, lw: document.documentElement.clientWidth, geoms: allGeoms() };
+          return { docH: document.documentElement.scrollHeight, docW: document.documentElement.scrollWidth, vpH: innerHeight, vpW: document.documentElement.clientWidth, lw: layoutW(), view: currentView(), geoms: allGeoms() };
         }
         case "capture:scroll": {
           if (msg.hideFixed) hideFixed();

@@ -37,6 +37,11 @@ h1{margin:2px 0 0;font-size:19px;line-height:1.25;text-wrap:balance}
 .btn:hover{border-color:var(--accent)}
 .btn.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-fg)}
 .tabs{display:none}
+.views{display:flex;border:1px solid var(--line);border-radius:8px;overflow:hidden}
+.views button{border:none;background:var(--panel);padding:6px 12px;font-weight:600;font-size:13px;display:flex;gap:6px;align-items:baseline}
+.views button span{font-family:var(--mono);font-size:11px;color:var(--muted)}
+.views button[aria-pressed="true"]{background:var(--fg);color:var(--bg)}
+.views button[aria-pressed="true"] span{color:inherit;opacity:.7}
 main{flex:1;min-height:0;display:grid;grid-template-columns:minmax(0,1fr) 400px}
 .proof{overflow:auto;min-height:0;background:repeating-linear-gradient(45deg,transparent 0 10px,color-mix(in srgb,var(--line) 30%,transparent) 10px 11px),var(--sunk);padding:24px 16px 80px}
 .phone{position:relative;margin:0 auto;background:#fff;box-shadow:0 0 0 1px var(--line),0 14px 40px rgba(0,0,0,.18);border-radius:4px;overflow:hidden}
@@ -95,6 +100,7 @@ main{flex:1;min-height:0;display:grid;grid-template-columns:minmax(0,1fr) 400px}
     <h1 id="title"></h1>
     <div class="facts" id="facts"></div>
   </div>
+  <div class="views" id="views" role="group" aria-label="Layout"></div>
   <div class="tabs" role="group" aria-label="View"><button type="button" data-view="page" aria-pressed="true">Page</button><button type="button" data-view="notes" aria-pressed="false" id="notesTab">Notes</button></div>
   <button class="btn primary" id="copy" type="button">Copy notes as text</button>
 </header>
@@ -120,78 +126,97 @@ main{flex:1;min-height:0;display:grid;grid-template-columns:minmax(0,1fr) 400px}
 const D = JSON.parse(document.getElementById("pm-data").textContent);
 const CATS = [["typography","Typography"],["spacing","Spacing"],["layout","Layout"],["color","Color"],["content","Content"],["other","Other"]];
 const LABEL = Object.fromEntries(CATS);
+const VIEWS = [["mobile","Mobile"],["desktop","Desktop"]].filter(([v]) => D.views[v]);
+const VLABEL = Object.fromEntries(VIEWS);
 const KIND = {pin:"Pin",highlight:"Highlight",box:"Box",arrow:"Arrow",measure:"Gap",sticker:"Sticker"};
 const SVGNS = "http://www.w3.org/2000/svg";
 const $ = s => document.querySelector(s);
 const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 const col = c => getComputedStyle(document.documentElement).getPropertyValue("--c-" + c).trim();
 const fmtDate = t => new Date(t).toLocaleString([], {month:"short",day:"numeric",year:"numeric",hour:"numeric",minute:"2-digit"});
-let selected = null, cats = new Set(CATS.map(c => c[0])), showDone = false;
+let V = VIEWS.some(([v]) => v === location.hash.slice(1)) ? location.hash.slice(1) : VIEWS[0][0];
+let selected = null, cats = new Set(CATS.map(c => c[0])), showDone = false, U = 1;
+const cur = () => D.views[V];
 
 $("#title").textContent = D.title;
 let host = ""; try { host = new URL(D.url).host; } catch {}
-$("#facts").innerHTML = `<a href="${esc(D.url)}" target="_blank" rel="noopener" title="${esc(D.url)}">${esc(host + (D.url.split(host)[1] || ""))}</a><span>Mobile <b>${D.vp}px</b></span><span>Captured ${esc(fmtDate(D.capturedAt))}</span>`;
-$("#foot").textContent = `Positions are in CSS pixels at a ${D.vp}px-wide viewport. The capture shows the page as it was on ${fmtDate(D.capturedAt)}.`;
+function renderFacts() {
+  $("#facts").innerHTML = `<a href="${esc(D.url)}" target="_blank" rel="noopener" title="${esc(D.url)}">${esc(host + (D.url.split(host)[1] || ""))}</a><span>${VLABEL[V]} <b>${cur().vp}px</b></span><span>Captured ${esc(fmtDate(cur().capturedAt))}</span>`;
+  $("#foot").textContent = `Positions are in CSS pixels at a ${cur().vp}px-wide viewport. The capture shows the page as it was on ${fmtDate(cur().capturedAt)}.`;
+  $("#views").hidden = VIEWS.length < 2;
+  $("#views").innerHTML = VIEWS.map(([v, l]) => `<button type="button" data-v="${v}" aria-pressed="${v === V}">${l}<span>${D.views[v].vp}px</span></button>`).join("");
+}
+$("#views").addEventListener("click", e => { const b = e.target.closest("button"); if (b && b.dataset.v !== V) switchView(b.dataset.v); });
+function switchView(v) {
+  V = v; selected = null; $("#sheet").hidden = true;
+  try { history.replaceState(null, "", "#" + v); } catch {}
+  for (const [k] of VIEWS) imgs[k].forEach(i => i.hidden = k !== V);
+  renderFacts(); layout(); renderFilters(); renderList(); proof.scrollTop = 0;
+}
+addEventListener("hashchange", () => { const h = location.hash.slice(1); if (D.views[h] && h !== V) switchView(h); });
 
 /* ---------- page ---------- */
 const phone = $("#phone"), ov = $("#ov"), proof = $("#proof");
-const imgs = D.tiles.map(t => { const i = new Image(); i.alt = ""; i.decoding = "async"; i.src = t.src; phone.insertBefore(i, ov); return i; });
+const imgs = {};
+for (const [v] of VIEWS) imgs[v] = D.views[v].tiles.map(t => { const i = new Image(); i.alt = ""; i.decoding = "async"; i.src = t.src; i.hidden = v !== V; phone.insertBefore(i, ov); return i; });
 function layout() {
-  const avail = proof.clientWidth - (innerWidth > 900 ? 32 : 0);
-  const s = Math.min(1.25, avail / D.vp) || 1;
-  phone.style.width = D.vp * s + "px"; phone.style.height = D.docH * s + "px";
-  D.tiles.forEach((t, i) => { imgs[i].style.top = t.y * s + "px"; imgs[i].style.height = t.h * s + "px"; });
+  const c = cur(), avail = proof.clientWidth - (innerWidth > 900 ? 32 : 0);
+  const s = Math.min(c.vp < 768 ? 1.25 : 1, avail / c.vp) || 1;
+  U = Math.min(2.5, Math.max(1, 1 / s));  // keep numbers readable when a desktop capture is shrunk
+  phone.style.width = c.vp * s + "px"; phone.style.height = c.docH * s + "px";
+  c.tiles.forEach((t, i) => { imgs[V][i].style.top = t.y * s + "px"; imgs[V][i].style.height = t.h * s + "px"; });
+  renderMarks();
 }
 addEventListener("resize", layout);
 
 function el(tag, a, p) { const e = document.createElementNS(SVGNS, tag); for (const k in a) e.setAttribute(k, a[k]); p && p.appendChild(e); return e; }
-function badge(g, x, y, n, c) { el("circle", {cx:x, cy:y, r:11, fill:c, stroke:"#fff", "stroke-width":2}, g); const t = el("text", {x, y:y+4, "text-anchor":"middle", "font-size":11.5, "font-weight":700, fill:"#fff"}, g); t.textContent = n; }
-function drawMark(n, parent, sel) {
+function badge(g, x, y, n, c, u) { el("circle", {cx:x, cy:y, r:11*u, fill:c, stroke:"#fff", "stroke-width":2*u}, g); const t = el("text", {x, y:y+4*u, "text-anchor":"middle", "font-size":11.5*u, "font-weight":700, fill:"#fff"}, g); t.textContent = n; }
+function drawMark(n, parent, sel, u) {
   const g = n.geom, c = col(n.cat); if (!g) return;
   const grp = el("g", {class:"mark", "data-id":n.id, tabindex:0, role:"button", "aria-label":`Note ${n.n}`}, parent);
   if (n.kind === "pin") {
-    el("path", {d:`M${g.x},${g.y} l-8,-14 a11,11 0 1 1 16,0 z`, fill:c, stroke:"#fff", "stroke-width":2}, grp);
-    const t = el("text", {x:g.x, y:g.y-18, "text-anchor":"middle", "font-size":11.5, "font-weight":700, fill:"#fff"}, grp); t.textContent = n.n;
-    if (sel) el("circle", {cx:g.x, cy:g.y-19, r:19, fill:"none", stroke:c, "stroke-width":2, "stroke-dasharray":"4 3"}, grp);
+    el("path", {d:`M${g.x},${g.y} l${-8*u},${-14*u} a${11*u},${11*u} 0 1 1 ${16*u},0 z`, fill:c, stroke:"#fff", "stroke-width":2*u}, grp);
+    const t = el("text", {x:g.x, y:g.y-18*u, "text-anchor":"middle", "font-size":11.5*u, "font-weight":700, fill:"#fff"}, grp); t.textContent = n.n;
+    if (sel) el("circle", {cx:g.x, cy:g.y-19*u, r:19*u, fill:"none", stroke:c, "stroke-width":2*u, "stroke-dasharray":`${4*u} ${3*u}`}, grp);
   } else if (n.kind === "sticker") {
-    const w = n.sticker.length * 6.6 + 40;
-    el("rect", {x:g.x, y:g.y-12, width:w, height:24, rx:12, fill:c, stroke:sel ? "#191c24" : "#fff", "stroke-width":2}, grp);
-    badge(grp, g.x, g.y, n.n, c);
-    const t = el("text", {x:g.x+17, y:g.y+4, "font-size":12, "font-weight":700, fill:"#fff"}, grp); t.textContent = n.sticker;
+    const w = (n.sticker.length * 6.6 + 40) * u;
+    el("rect", {x:g.x, y:g.y-12*u, width:w, height:24*u, rx:12*u, fill:c, stroke:sel ? "#191c24" : "#fff", "stroke-width":2*u}, grp);
+    badge(grp, g.x, g.y, n.n, c, u);
+    const t = el("text", {x:g.x+17*u, y:g.y+4*u, "font-size":12*u, "font-weight":700, fill:"#fff"}, grp); t.textContent = n.sticker;
   } else if (n.kind === "arrow") {
-    el("line", {x1:g.x1, y1:g.y1, x2:g.x2, y2:g.y2, stroke:"transparent", "stroke-width":16}, grp);
-    el("line", {x1:g.x1, y1:g.y1, x2:g.x2, y2:g.y2, stroke:c, "stroke-width":sel ? 4 : 3, "marker-end":`url(#ah-${n.cat})`}, grp);
-    badge(grp, g.x1, g.y1, n.n, c);
+    el("line", {x1:g.x1, y1:g.y1, x2:g.x2, y2:g.y2, stroke:"transparent", "stroke-width":16*u}, grp);
+    el("line", {x1:g.x1, y1:g.y1, x2:g.x2, y2:g.y2, stroke:c, "stroke-width":(sel ? 4 : 3)*u, "marker-end":`url(#ah-${n.cat})`}, grp);
+    badge(grp, g.x1, g.y1, n.n, c, u);
   } else if (n.kind === "measure") {
-    const v = g.dir !== "h";
-    el("line", {x1:g.x1, y1:g.y1, x2:g.x2, y2:g.y2, stroke:"transparent", "stroke-width":16}, grp);
-    el("line", {x1:g.x1, y1:g.y1, x2:g.x2, y2:g.y2, stroke:c, "stroke-width":sel ? 3 : 2}, grp);
-    [[g.x1,g.y1],[g.x2,g.y2]].forEach(([x,y]) => el("line", v ? {x1:x-7,y1:y,x2:x+7,y2:y,stroke:c,"stroke-width":2} : {x1:x,y1:y-7,x2:x,y2:y+7,stroke:c,"stroke-width":2}, grp));
-    const lbl = g.dir === "overlap" ? "overlap" : g.gap + "px", w = lbl.length * 7.4 + 12, mx = (g.x1+g.x2)/2, my = (g.y1+g.y2)/2;
-    el("rect", {x:mx+14, y:my-10, width:w, height:20, rx:4, fill:c}, grp);
-    const t = el("text", {x:mx+14+w/2, y:my+4, "text-anchor":"middle", "font-size":11.5, "font-weight":700, fill:"#fff", "font-family":"ui-monospace,Menlo,monospace"}, grp); t.textContent = lbl;
-    badge(grp, mx-14, my, n.n, c);
+    const v = g.dir !== "h", k = 7*u;
+    el("line", {x1:g.x1, y1:g.y1, x2:g.x2, y2:g.y2, stroke:"transparent", "stroke-width":16*u}, grp);
+    el("line", {x1:g.x1, y1:g.y1, x2:g.x2, y2:g.y2, stroke:c, "stroke-width":(sel ? 3 : 2)*u}, grp);
+    [[g.x1,g.y1],[g.x2,g.y2]].forEach(([x,y]) => el("line", v ? {x1:x-k,y1:y,x2:x+k,y2:y,stroke:c,"stroke-width":2*u} : {x1:x,y1:y-k,x2:x,y2:y+k,stroke:c,"stroke-width":2*u}, grp));
+    const lbl = g.dir === "overlap" ? "overlap" : g.gap + "px", w = (lbl.length * 7.4 + 12)*u, mx = (g.x1+g.x2)/2, my = (g.y1+g.y2)/2;
+    el("rect", {x:mx+14*u, y:my-10*u, width:w, height:20*u, rx:4*u, fill:c}, grp);
+    const t = el("text", {x:mx+14*u+w/2, y:my+4*u, "text-anchor":"middle", "font-size":11.5*u, "font-weight":700, fill:"#fff", "font-family":"ui-monospace,Menlo,monospace"}, grp); t.textContent = lbl;
+    badge(grp, mx-14*u, my, n.n, c, u);
   } else {
-    if (sel) el("rect", {x:g.x-5, y:g.y-5, width:g.w+10, height:g.h+10, fill:"none", stroke:c, "stroke-width":1.5, "stroke-dasharray":"6 4"}, grp);
-    el("rect", {x:g.x, y:g.y, width:g.w, height:g.h, fill:n.kind === "highlight" ? c : "transparent", "fill-opacity":n.kind === "highlight" ? .2 : 0, stroke:c, "stroke-width":n.kind === "box" ? 3 : 1.5}, grp);
-    badge(grp, g.x, g.y, n.n, c);
+    if (sel) el("rect", {x:g.x-5*u, y:g.y-5*u, width:g.w+10*u, height:g.h+10*u, fill:"none", stroke:c, "stroke-width":1.5*u, "stroke-dasharray":`${6*u} ${4*u}`}, grp);
+    el("rect", {x:g.x, y:g.y, width:g.w, height:g.h, fill:n.kind === "highlight" ? c : "transparent", "fill-opacity":n.kind === "highlight" ? .2 : 0, stroke:c, "stroke-width":(n.kind === "box" ? 3 : 1.5)*u}, grp);
+    badge(grp, g.x, g.y, n.n, c, u);
   }
   return grp;
 }
-const visible = n => cats.has(n.cat) && (showDone || !n.done);
+function arrowDefs(svg) { const defs = el("defs", {}, svg); CATS.forEach(([id]) => { const m = el("marker", {id:"ah-"+id, viewBox:"0 0 10 10", refX:8, refY:5, markerWidth:5, markerHeight:5, orient:"auto-start-reverse"}, defs); el("path", {d:"M0,0L10,5L0,10z", fill:col(id)}, m); }); }
+const inView = n => n.view === V;
+const visible = n => inView(n) && cats.has(n.cat) && (showDone || !n.done);
 function renderMarks() {
-  ov.setAttribute("viewBox", `0 0 ${D.vp} ${D.docH}`);
-  ov.innerHTML = "";
-  const defs = el("defs", {}, ov);
-  CATS.forEach(([id]) => { const m = el("marker", {id:"ah-"+id, viewBox:"0 0 10 10", refX:8, refY:5, markerWidth:5, markerHeight:5, orient:"auto-start-reverse"}, defs); el("path", {d:"M0,0L10,5L0,10z", fill:col(id)}, m); });
+  ov.setAttribute("viewBox", `0 0 ${cur().vp} ${cur().docH}`);
+  ov.innerHTML = ""; arrowDefs(ov);
   const list = D.notes.filter(visible);
-  list.filter(n => n.id !== selected).forEach(n => drawMark(n, ov, false));
-  const s = list.find(n => n.id === selected); if (s) drawMark(s, ov, true);
+  list.filter(n => n.id !== selected).forEach(n => drawMark(n, ov, false, U));
+  const s = list.find(n => n.id === selected); if (s) drawMark(s, ov, true, U);
 }
 const topOf = g => g ? (g.y ?? Math.min(g.y1, g.y2)) : 0;
 function scrollToNote(n, flash) {
   if (!n.geom) return;
-  const s = phone.clientHeight / D.docH;
+  const s = phone.clientHeight / cur().docH;
   const target = phone.offsetTop + topOf(n.geom) * s - proof.clientHeight / 3;
   proof.scrollTo({top: Math.max(0, target), behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth"});
   if (flash) setTimeout(() => ov.querySelector(`.mark[data-id="${n.id}"]`)?.classList.add("flash"), 350);
@@ -209,7 +234,7 @@ ov.addEventListener("click", e => { const g = e.target.closest(".mark"); if (g) 
 ov.addEventListener("keydown", e => { if (e.key === "Enter") { const g = e.target.closest(".mark"); if (g) select(g.dataset.id, "mark"); } });
 
 /* ---------- close-up crops ---------- */
-let cropsReady = Promise.all(imgs.map(i => i.decode ? i.decode().catch(() => {}) : new Promise(r => { i.onload = r; })));
+const decoded = Promise.all(Object.values(imgs).flat().map(i => i.decode ? i.decode().catch(() => {}) : null));
 const crops = {};
 function bbox(n) {
   const g = n.geom; if (!g) return null;
@@ -218,26 +243,23 @@ function bbox(n) {
   return n.kind === "sticker" ? {x:g.x, y:g.y-12, w:n.sticker.length * 6.6 + 40, h:24} : {x:g.x, y:g.y-30, w:1, h:60};
 }
 async function makeCrop(n) {
-  const b = bbox(n); if (!b) return null;
-  await cropsReady;
-  const pad = 40, minW = 300, minH = n.kind === "pin" || n.kind === "sticker" ? 180 : 140;
-  let w = Math.max(b.w + pad * 2, minW), h = Math.max(b.h + pad * 2, minH);
-  w = Math.min(w, D.vp); h = Math.min(h, 520);
-  let x = Math.max(0, Math.min(D.vp - w, b.x + b.w / 2 - w / 2)), y = Math.max(0, Math.min(D.docH - h, b.y + b.h / 2 - h / 2));
-  const scale = imgs[0].naturalWidth / D.vp || 2;
+  const b = bbox(n), vw = D.views[n.view], vimgs = imgs[n.view]; if (!b || !vw) return null;
+  await decoded;
+  const pad = 40, minW = Math.min(vw.vp, n.view === "desktop" ? 520 : 300), minH = n.kind === "pin" || n.kind === "sticker" ? 180 : 140;
+  let w = Math.min(Math.max(b.w + pad * 2, minW), vw.vp), h = Math.min(Math.max(b.h + pad * 2, minH), n.view === "desktop" ? 600 : 520);
+  const x = Math.max(0, Math.min(vw.vp - w, b.x + b.w / 2 - w / 2)), y = Math.max(0, Math.min(vw.docH - h, b.y + b.h / 2 - h / 2));
+  const scale = Math.min(2, vimgs[0].naturalWidth / vw.vp || 2);
   const cv = document.createElement("canvas"); cv.width = Math.round(w * scale); cv.height = Math.round(h * scale);
   const ctx = cv.getContext("2d"); ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, cv.width, cv.height);
-  D.tiles.forEach((t, i) => {
+  vw.tiles.forEach((t, i) => {
     if (t.y + t.h <= y || t.y >= y + h) return;
-    const im = imgs[i];
-    ctx.drawImage(im, 0, 0, im.naturalWidth, im.naturalHeight, -x * scale, (t.y - y) * scale, D.vp * scale, t.h * scale);
+    const im = vimgs[i];
+    ctx.drawImage(im, 0, 0, im.naturalWidth, im.naturalHeight, -x * scale, (t.y - y) * scale, vw.vp * scale, t.h * scale);
   });
-  // draw the mark on top
   const svg = document.createElementNS(SVGNS, "svg");
   svg.setAttribute("xmlns", SVGNS); svg.setAttribute("viewBox", `${x} ${y} ${w} ${h}`); svg.setAttribute("width", cv.width); svg.setAttribute("height", cv.height);
   svg.setAttribute("font-family", "Helvetica, Arial, sans-serif");
-  const defs = el("defs", {}, svg); const m = el("marker", {id:"ah-"+n.cat, viewBox:"0 0 10 10", refX:8, refY:5, markerWidth:5, markerHeight:5, orient:"auto-start-reverse"}, defs); el("path", {d:"M0,0L10,5L0,10z", fill:col(n.cat)}, m);
-  drawMark(n, svg, false);
+  arrowDefs(svg); drawMark(n, svg, false, 1);
   const im = new Image();
   await new Promise(r => { im.onload = r; im.onerror = r; im.src = "data:image/svg+xml;charset=utf-8," + encodeURIComponent(new XMLSerializer().serializeToString(svg)); });
   try { ctx.drawImage(im, 0, 0); } catch {}
@@ -246,11 +268,12 @@ async function makeCrop(n) {
 
 /* ---------- ledger ---------- */
 function renderFilters() {
-  const f = $("#filters");
-  f.innerHTML = CATS.map(([id, l]) => { const k = D.notes.filter(n => n.cat === id && (showDone || !n.done)).length; return k ? `<button type="button" class="chip" data-cat="${id}" style="--c:var(--c-${id})" aria-pressed="${cats.has(id)}">${l} ${k}</button>` : ""; }).join("");
-  const open = D.notes.filter(n => !n.done).length;
-  $("#sum").textContent = `${open} open${D.notes.length - open ? ` · ${D.notes.length - open} resolved` : ""}`;
+  const mine = D.notes.filter(inView);
+  $("#filters").innerHTML = CATS.map(([id, l]) => { const k = mine.filter(n => n.cat === id && (showDone || !n.done)).length; return k ? `<button type="button" class="chip" data-cat="${id}" style="--c:var(--c-${id})" aria-pressed="${cats.has(id)}">${l} ${k}</button>` : ""; }).join("");
+  const open = mine.filter(n => !n.done).length;
+  $("#sum").textContent = `${VLABEL[V]} · ${open} open${mine.length - open ? ` · ${mine.length - open} resolved` : ""}`;
   $("#notesTab").textContent = `Notes (${open})`;
+  document.querySelectorAll("#views button").forEach(b => { const k = D.notes.filter(n => n.view === b.dataset.v && !n.done).length; b.title = `${k} open note${k === 1 ? "" : "s"}`; });
 }
 $("#filters").addEventListener("click", e => { const b = e.target.closest(".chip"); if (!b) return; const c = b.dataset.cat; cats.has(c) ? cats.delete(c) : cats.add(c); if (!cats.size) CATS.forEach(([id]) => cats.add(id)); renderFilters(); renderMarks(); renderList(); });
 $("#showDone").addEventListener("change", e => { showDone = e.target.checked; renderFilters(); renderMarks(); renderList(); });
@@ -268,7 +291,7 @@ function noteHtml(n, withCrop) {
 function renderList() {
   const items = D.notes.filter(visible);
   $("#list").innerHTML = items.length ? items.map(n => `<div class="note${n.id === selected ? " sel" : ""}${n.done ? " done" : ""}" data-id="${n.id}" style="--c:var(--c-${n.cat})" tabindex="0" role="button">${noteHtml(n, true)}</div>`).join("")
-    : `<p class="sum" style="text-align:center;padding:16px">No notes in these categories.</p>`;
+    : `<p class="sum" style="text-align:center;padding:16px">No ${VLABEL[V]} notes in these categories.</p>`;
 }
 $("#list").addEventListener("click", e => { const c = e.target.closest(".note"); if (c) select(c.dataset.id, "list"); });
 $("#list").addEventListener("keydown", e => { if (e.key === "Enter") { const c = e.target.closest(".note"); if (c) select(c.dataset.id, "list"); } });
@@ -278,22 +301,26 @@ function showSheet(n) {
   s.hidden = false; s.querySelector(".close").onclick = () => { s.hidden = true; };
 }
 
-/* ---------- view tabs ---------- */
+/* ---------- page / notes tabs on phones ---------- */
 function setView(v) { $("#main").dataset.view = v; document.querySelectorAll(".tabs button").forEach(b => b.setAttribute("aria-pressed", b.dataset.view === v)); if (v === "page") requestAnimationFrame(layout); $("#sheet").hidden = true; }
 document.querySelectorAll(".tabs button").forEach(b => b.onclick = () => setView(b.dataset.view));
 
 /* ---------- copy as text ---------- */
 function asText() {
-  const L = [`*${D.title}*`, `Review: ${location.href.split("#")[0]}`, `Page: ${D.url} · mobile ${D.vp}px · captured ${fmtDate(D.capturedAt)}`];
-  for (const [id, l] of CATS) {
-    const g = D.notes.filter(n => n.cat === id && !n.done); if (!g.length) continue;
-    L.push("", `*${l} (${g.length})*`);
-    for (const n of g) {
-      const tag = n.kind === "sticker" ? `[${n.sticker}] ` : n.kind === "measure" ? `[gap ${n.from}] ` : "";
-      let line = `• ${n.n}. ${tag}${(n.note || "(no note)").trim().replace(/\s*\n\s*/g, " ")}`;
-      if (n.kind !== "measure" && (n.from || n.to)) line += ` \`${n.from || "?"} → ${n.to || "?"}\``;
-      else if (n.kind === "measure" && n.to) line += ` \`→ ${n.to}\``;
-      L.push(line);
+  const L = [`*${D.title}*`, `Review: ${location.href.split("#")[0]}`, `Page: ${D.url}`];
+  for (const [v, vl] of VIEWS) {
+    const items = D.notes.filter(n => n.view === v && !n.done); if (!items.length) continue;
+    L.push("", `*— ${vl} (${D.views[v].vp}px) —*`);
+    for (const [id, l] of CATS) {
+      const g = items.filter(n => n.cat === id); if (!g.length) continue;
+      L.push(`_${l} (${g.length})_`);
+      for (const n of g) {
+        const tag = n.kind === "sticker" ? `[${n.sticker}] ` : n.kind === "measure" ? `[gap ${n.from}] ` : "";
+        let line = `• ${n.n}. ${tag}${(n.note || "(no note)").trim().replace(/\s*\n\s*/g, " ")}`;
+        if (n.kind !== "measure" && (n.from || n.to)) line += ` \`${n.from || "?"} → ${n.to || "?"}\``;
+        else if (n.kind === "measure" && n.to) line += ` \`→ ${n.to}\``;
+        L.push(line);
+      }
     }
   }
   return L.join("\n");
@@ -305,7 +332,7 @@ $("#copy").onclick = async () => {
   catch { const ta = document.createElement("textarea"); ta.value = text; document.body.appendChild(ta); ta.select(); try { document.execCommand("copy"); toast("Notes copied"); } catch { toast("Copy blocked by the browser"); } ta.remove(); }
 };
 
-layout(); renderFilters(); renderMarks(); renderList();
+renderFacts(); layout(); renderFilters(); renderList();
 (async () => { for (const n of D.notes) { try { crops[n.id] = await makeCrop(n); } catch {} } renderList(); })();
 })();
 </script>
