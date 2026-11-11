@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Page Markup</title>
+<link rel="stylesheet" href="sidepanel.css">
+</head>
+<body>
+<header class="top">
+  <div class="brand"><img src="icons/icon48.png" alt="" width="22" height="22"><b>Page Markup</b></div>
+  <div class="page" id="pageInfo">No page</div>
+</header>
+
+<section class="block" id="startBlock">
+  <button class="btn primary wide" id="startBtn" type="button">Start markup on this page</button>
+  <p class="hint" id="startHint">Opens a markup layer on the current tab. Chrome asks once per site for permission.</p>
+</section>
+
+<div id="workspace" hidden>
+  <section class="block">
+    <label class="lbl" for="title">Review title</label>
+    <input id="title" class="field">
+    <div class="row">
+      <label class="lbl" for="vp">Phone width</label>
+      <input id="vp" class="field mono narrow" type="number" min="280" max="1024" value="390"><span class="unit">px</span>
+      <button class="btn" id="phoneBtn" type="button">Phone view</button>
+    </div>
+    <p class="hint" id="phoneHint">Phone view resizes this tab to a phone screen and reloads it with an iPhone browser identity. Chrome shows a "debugging this browser" bar while it's on.</p>
+  </section>
+
+  <section class="block">
+    <h3>Tool <span class="keys">Esc browse · P H B A M S</span></h3>
+    <div class="tools" id="tools"></div>
+    <h3>Category</h3>
+    <div class="cats" id="cats"></div>
+    <div id="stickerWrap">
+      <h3>Sticker</h3>
+      <div class="stickers" id="stickers"></div>
+    </div>
+  </section>
+
+  <section class="block notes-block">
+    <h3>Notes <span class="count" id="count"></span></h3>
+    <div class="counts" id="counts"></div>
+    <div class="list" id="list"></div>
+  </section>
+
+  <section class="block share">
+    <h3>Capture & share</h3>
+    <div class="row">
+      <select id="capMode" class="field" aria-label="Capture method">
+        <option value="stitch">Scroll and stitch (recommended)</option>
+        <option value="single">Single full-page shot</option>
+        <option value="upload">Use my own screenshot</option>
+      </select>
+    </div>
+    <button class="btn wide" id="captureBtn" type="button">Capture page</button>
+    <input type="file" id="fileIn" accept="image/*" hidden>
+    <p class="hint" id="capStatus">Not captured yet. Capture after you've placed your notes.</p>
+    <div class="progress" id="progress" hidden><i></i></div>
+    <button class="btn primary wide" id="publishBtn" type="button">Publish to GitHub</button>
+    <div class="linkbox" id="linkBox" hidden>
+      <a id="liveLink" target="_blank" rel="noopener"></a>
+      <button class="btn small" id="copyLink" type="button">Copy link</button>
+      <p class="hint" id="linkHint">GitHub Pages can take about a minute to show a new or updated review.</p>
+    </div>
+    <div class="row">
+      <button class="btn" id="copySlack" type="button">Copy Slack list</button>
+      <button class="btn" id="downloadBtn" type="button">Download .html</button>
+    </div>
+    <details class="settings" id="settings">
+      <summary>GitHub settings</summary>
+      <label class="lbl" for="ghOwner">Owner</label><input id="ghOwner" class="field mono" placeholder="your-github-username">
+      <label class="lbl" for="ghRepo">Repository</label><input id="ghRepo" class="field mono" placeholder="page-markup">
+      <div class="row2">
+        <div><label class="lbl" for="ghBranch">Branch</label><input id="ghBranch" class="field mono" value="main"></div>
+        <div><label class="lbl" for="ghFolder">Folder</label><input id="ghFolder" class="field mono" value="reviews"></div>
+      </div>
+      <label class="lbl" for="ghToken">Access token</label><input id="ghToken" class="field mono" type="password" placeholder="github_pat_…" autocomplete="off">
+      <p class="hint">Use a fine-grained token limited to this one repository with <b>Contents: Read and write</b>. It's stored only in this browser.</p>
+      <button class="btn small" id="saveGh" type="button">Save settings</button>
+    </details>
+  </section>
+
+  <section class="block foot">
+    <button class="linkbtn" id="stopBtn" type="button">Hide markup on page</button>
+    <button class="linkbtn danger" id="clearBtn" type="button">Delete all notes for this page</button>
+  </section>
+</div>
+
+<div class="toast" id="toast" hidden></div>
+<script src="sidepanel.js"></script>
+</body>
+</html>

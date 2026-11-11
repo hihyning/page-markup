@@ -1,0 +1,313 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="robots" content="noindex,nofollow">
+<title>__PM_TITLE__</title>
+<style>
+/* Layout: proof column (phone-width capture with marks) beside a numbered notes ledger; tabs on phones. */
+:root{
+  --bg:#eceef3; --panel:#ffffff; --sunk:#e1e4eb; --line:#d3d7e0; --fg:#191c24; --muted:#5b6274;
+  --accent:#2f4bdb; --accent-fg:#fff;
+  --c-typography:#d6336c; --c-spacing:#0c8f6a; --c-layout:#3b5bdb; --c-color:#d9480f; --c-content:#7048e8; --c-other:#5c6370;
+  --ui:-apple-system,BlinkMacSystemFont,"Segoe UI",Inter,Helvetica,Arial,sans-serif;
+  --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  color-scheme:light;
+}
+@media (prefers-color-scheme:dark){:root{
+  --bg:#111318; --panel:#1b1e26; --sunk:#232733; --line:#323745; --fg:#e8eaf0; --muted:#9aa1b2;
+  --accent:#7d93ff; --accent-fg:#0d1020;
+  --c-typography:#f06595; --c-spacing:#38d9a9; --c-layout:#748ffc; --c-color:#ff922b; --c-content:#9775fa; --c-other:#adb5bd;
+  color-scheme:dark}}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+html,body{height:100%;margin:0}
+body{background:var(--bg);color:var(--fg);font:14px/1.45 var(--ui);display:flex;flex-direction:column}
+button{font:inherit;color:inherit;cursor:pointer}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+header{background:var(--panel);border-bottom:1px solid var(--line);padding:12px max(16px,env(safe-area-inset-left)) 12px max(16px,env(safe-area-inset-right));display:flex;flex-wrap:wrap;gap:8px 20px;align-items:center}
+.ttl{flex:1 1 320px;min-width:0}
+.eyebrow{font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);font-weight:700}
+h1{margin:2px 0 0;font-size:19px;line-height:1.25;text-wrap:balance}
+.facts{display:flex;flex-wrap:wrap;gap:4px 14px;font-size:12.5px;color:var(--muted);margin-top:4px}
+.facts a{color:var(--accent);text-decoration:none;max-width:340px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:inline-block;vertical-align:bottom}
+.facts b{color:var(--fg);font-weight:600;font-family:var(--mono);font-size:12px}
+.btn{border:1px solid var(--line);background:var(--panel);border-radius:8px;padding:7px 12px;font-weight:600;font-size:13px}
+.btn:hover{border-color:var(--accent)}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-fg)}
+.tabs{display:none}
+main{flex:1;min-height:0;display:grid;grid-template-columns:minmax(0,1fr) 400px}
+.proof{overflow:auto;min-height:0;background:repeating-linear-gradient(45deg,transparent 0 10px,color-mix(in srgb,var(--line) 30%,transparent) 10px 11px),var(--sunk);padding:24px 16px 80px}
+.phone{position:relative;margin:0 auto;background:#fff;box-shadow:0 0 0 1px var(--line),0 14px 40px rgba(0,0,0,.18);border-radius:4px;overflow:hidden}
+.phone img{position:absolute;left:0;width:100%;display:block;max-width:none;user-select:none}
+.phone svg{position:absolute;inset:0;width:100%;height:100%}
+.mark{cursor:pointer}
+.mark text{font-family:var(--ui);pointer-events:none}
+.mark.flash{animation:flash 1.2s ease 2}
+@keyframes flash{50%{opacity:.25}}
+.ledger{background:var(--panel);border-left:1px solid var(--line);display:flex;flex-direction:column;min-height:0}
+.lhead{padding:14px 16px 10px;border-bottom:1px solid var(--line);display:flex;flex-direction:column;gap:8px}
+.lhead .row{display:flex;justify-content:space-between;align-items:baseline;gap:8px}
+.lhead h2{margin:0;font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+.sum{font-size:12px;color:var(--muted);font-variant-numeric:tabular-nums}
+.filters{display:flex;flex-wrap:wrap;gap:5px}
+.chip{border:1.5px solid color-mix(in srgb,var(--c) 45%,transparent);background:color-mix(in srgb,var(--c) 12%,transparent);color:var(--c);border-radius:999px;padding:2px 9px;font-size:12px;font-weight:700}
+.chip[aria-pressed="false"]{background:none;border-color:var(--line);color:var(--muted)}
+.toggle{font-size:12px;color:var(--muted);display:flex;align-items:center;gap:5px}
+.list{flex:1;overflow:auto;padding:10px 12px 24px;display:flex;flex-direction:column;gap:10px}
+.note{border:1px solid var(--line);border-radius:10px;padding:10px;display:grid;grid-template-columns:28px minmax(0,1fr);gap:6px 10px;background:var(--panel);cursor:pointer;text-align:left}
+.note:hover{border-color:color-mix(in srgb,var(--c) 60%,var(--line))}
+.note.sel{border-color:var(--c);box-shadow:0 0 0 2px color-mix(in srgb,var(--c) 28%,transparent)}
+.note.done{opacity:.55}
+.num{width:26px;height:26px;border-radius:50%;background:var(--c);color:#fff;font-weight:700;font-size:13px;display:flex;align-items:center;justify-content:center;font-variant-numeric:tabular-nums}
+.nmeta{display:flex;flex-wrap:wrap;gap:3px 8px;font-size:12px;color:var(--muted);align-items:baseline}
+.nmeta .k{color:var(--c);font-weight:700}
+.ntext{grid-column:2;font-size:14px;white-space:pre-wrap;word-break:break-word}
+.ntext.none{color:var(--muted);font-style:italic}
+.chg{grid-column:2;font-family:var(--mono);font-size:12px;display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.chg s{color:var(--muted)}
+.chg b{color:var(--c)}
+.spec{grid-column:2;font-family:var(--mono);font-size:11px;color:var(--muted);background:var(--bg);border-radius:6px;padding:5px 7px;word-break:break-word}
+.crop{grid-column:2;border-radius:6px;border:1px solid var(--line);max-width:100%;display:block;background:#fff}
+.foot{padding:10px 16px;border-top:1px solid var(--line);font-size:12px;color:var(--muted)}
+.sheet{position:fixed;left:8px;right:8px;bottom:calc(8px + env(safe-area-inset-bottom));z-index:10;background:var(--panel);border:1px solid var(--line);border-radius:14px;box-shadow:0 10px 40px rgba(0,0,0,.3);padding:12px;max-height:55vh;overflow:auto}
+.sheet .close{position:absolute;top:6px;right:8px;border:none;background:none;font-size:20px;color:var(--muted)}
+.toast{position:fixed;left:50%;bottom:calc(20px + env(safe-area-inset-bottom));transform:translateX(-50%);background:var(--fg);color:var(--bg);padding:8px 14px;border-radius:8px;font-weight:600;font-size:13px;z-index:20}
+@media (max-width:900px){
+  .tabs{display:flex;gap:0;border:1px solid var(--line);border-radius:8px;overflow:hidden}
+  .tabs button{border:none;background:var(--panel);padding:6px 14px;font-weight:600;font-size:13px}
+  .tabs button[aria-pressed="true"]{background:var(--accent);color:var(--accent-fg)}
+  main{grid-template-columns:minmax(0,1fr)}
+  main[data-view="page"] .ledger{display:none}
+  main[data-view="notes"] .proof{display:none}
+  .ledger{border-left:none}
+  .proof{padding:12px 0 80px}
+  .phone{border-radius:0}
+}
+@media (prefers-reduced-motion:reduce){.mark.flash{animation:none}}
+</style>
+</head>
+<body>
+<header>
+  <div class="ttl">
+    <div class="eyebrow">Markup review</div>
+    <h1 id="title"></h1>
+    <div class="facts" id="facts"></div>
+  </div>
+  <div class="tabs" role="group" aria-label="View"><button type="button" data-view="page" aria-pressed="true">Page</button><button type="button" data-view="notes" aria-pressed="false" id="notesTab">Notes</button></div>
+  <button class="btn primary" id="copy" type="button">Copy notes as text</button>
+</header>
+<main id="main" data-view="page">
+  <section class="proof" id="proof" aria-label="Captured page with marks">
+    <div class="phone" id="phone"><svg id="ov" xmlns="http://www.w3.org/2000/svg"></svg></div>
+  </section>
+  <aside class="ledger" aria-label="Notes">
+    <div class="lhead">
+      <div class="row"><h2>Notes</h2><span class="sum" id="sum"></span></div>
+      <div class="filters" id="filters"></div>
+      <label class="toggle"><input type="checkbox" id="showDone"> Show resolved</label>
+    </div>
+    <div class="list" id="list"></div>
+    <div class="foot" id="foot"></div>
+  </aside>
+</main>
+<div class="sheet" id="sheet" hidden></div>
+<div class="toast" id="toast" hidden></div>
+<script id="pm-data" type="application/json">__PM_DATA__</script>
+<script>
+(() => {
+const D = JSON.parse(document.getElementById("pm-data").textContent);
+const CATS = [["typography","Typography"],["spacing","Spacing"],["layout","Layout"],["color","Color"],["content","Content"],["other","Other"]];
+const LABEL = Object.fromEntries(CATS);
+const KIND = {pin:"Pin",highlight:"Highlight",box:"Box",arrow:"Arrow",measure:"Gap",sticker:"Sticker"};
+const SVGNS = "http://www.w3.org/2000/svg";
+const $ = s => document.querySelector(s);
+const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const col = c => getComputedStyle(document.documentElement).getPropertyValue("--c-" + c).trim();
+const fmtDate = t => new Date(t).toLocaleString([], {month:"short",day:"numeric",year:"numeric",hour:"numeric",minute:"2-digit"});
+let selected = null, cats = new Set(CATS.map(c => c[0])), showDone = false;
+
+$("#title").textContent = D.title;
+let host = ""; try { host = new URL(D.url).host; } catch {}
+$("#facts").innerHTML = `<a href="${esc(D.url)}" target="_blank" rel="noopener" title="${esc(D.url)}">${esc(host + (D.url.split(host)[1] || ""))}</a><span>Mobile <b>${D.vp}px</b></span><span>Captured ${esc(fmtDate(D.capturedAt))}</span>`;
+$("#foot").textContent = `Positions are in CSS pixels at a ${D.vp}px-wide viewport. The capture shows the page as it was on ${fmtDate(D.capturedAt)}.`;
+
+/* ---------- page ---------- */
+const phone = $("#phone"), ov = $("#ov"), proof = $("#proof");
+const imgs = D.tiles.map(t => { const i = new Image(); i.alt = ""; i.decoding = "async"; i.src = t.src; phone.insertBefore(i, ov); return i; });
+function layout() {
+  const avail = proof.clientWidth - (innerWidth > 900 ? 32 : 0);
+  const s = Math.min(1.25, avail / D.vp) || 1;
+  phone.style.width = D.vp * s + "px"; phone.style.height = D.docH * s + "px";
+  D.tiles.forEach((t, i) => { imgs[i].style.top = t.y * s + "px"; imgs[i].style.height = t.h * s + "px"; });
+}
+addEventListener("resize", layout);
+
+function el(tag, a, p) { const e = document.createElementNS(SVGNS, tag); for (const k in a) e.setAttribute(k, a[k]); p && p.appendChild(e); return e; }
+function badge(g, x, y, n, c) { el("circle", {cx:x, cy:y, r:11, fill:c, stroke:"#fff", "stroke-width":2}, g); const t = el("text", {x, y:y+4, "text-anchor":"middle", "font-size":11.5, "font-weight":700, fill:"#fff"}, g); t.textContent = n; }
+function drawMark(n, parent, sel) {
+  const g = n.geom, c = col(n.cat); if (!g) return;
+  const grp = el("g", {class:"mark", "data-id":n.id, tabindex:0, role:"button", "aria-label":`Note ${n.n}`}, parent);
+  if (n.kind === "pin") {
+    el("path", {d:`M${g.x},${g.y} l-8,-14 a11,11 0 1 1 16,0 z`, fill:c, stroke:"#fff", "stroke-width":2}, grp);
+    const t = el("text", {x:g.x, y:g.y-18, "text-anchor":"middle", "font-size":11.5, "font-weight":700, fill:"#fff"}, grp); t.textContent = n.n;
+    if (sel) el("circle", {cx:g.x, cy:g.y-19, r:19, fill:"none", stroke:c, "stroke-width":2, "stroke-dasharray":"4 3"}, grp);
+  } else if (n.kind === "sticker") {
+    const w = n.sticker.length * 6.6 + 40;
+    el("rect", {x:g.x, y:g.y-12, width:w, height:24, rx:12, fill:c, stroke:sel ? "#191c24" : "#fff", "stroke-width":2}, grp);
+    badge(grp, g.x, g.y, n.n, c);
+    const t = el("text", {x:g.x+17, y:g.y+4, "font-size":12, "font-weight":700, fill:"#fff"}, grp); t.textContent = n.sticker;
+  } else if (n.kind === "arrow") {
+    el("line", {x1:g.x1, y1:g.y1, x2:g.x2, y2:g.y2, stroke:"transparent", "stroke-width":16}, grp);
+    el("line", {x1:g.x1, y1:g.y1, x2:g.x2, y2:g.y2, stroke:c, "stroke-width":sel ? 4 : 3, "marker-end":`url(#ah-${n.cat})`}, grp);
+    badge(grp, g.x1, g.y1, n.n, c);
+  } else if (n.kind === "measure") {
+    const v = g.dir !== "h";
+    el("line", {x1:g.x1, y1:g.y1, x2:g.x2, y2:g.y2, stroke:"transparent", "stroke-width":16}, grp);
+    el("line", {x1:g.x1, y1:g.y1, x2:g.x2, y2:g.y2, stroke:c, "stroke-width":sel ? 3 : 2}, grp);
+    [[g.x1,g.y1],[g.x2,g.y2]].forEach(([x,y]) => el("line", v ? {x1:x-7,y1:y,x2:x+7,y2:y,stroke:c,"stroke-width":2} : {x1:x,y1:y-7,x2:x,y2:y+7,stroke:c,"stroke-width":2}, grp));
+    const lbl = g.dir === "overlap" ? "overlap" : g.gap + "px", w = lbl.length * 7.4 + 12, mx = (g.x1+g.x2)/2, my = (g.y1+g.y2)/2;
+    el("rect", {x:mx+14, y:my-10, width:w, height:20, rx:4, fill:c}, grp);
+    const t = el("text", {x:mx+14+w/2, y:my+4, "text-anchor":"middle", "font-size":11.5, "font-weight":700, fill:"#fff", "font-family":"ui-monospace,Menlo,monospace"}, grp); t.textContent = lbl;
+    badge(grp, mx-14, my, n.n, c);
+  } else {
+    if (sel) el("rect", {x:g.x-5, y:g.y-5, width:g.w+10, height:g.h+10, fill:"none", stroke:c, "stroke-width":1.5, "stroke-dasharray":"6 4"}, grp);
+    el("rect", {x:g.x, y:g.y, width:g.w, height:g.h, fill:n.kind === "highlight" ? c : "transparent", "fill-opacity":n.kind === "highlight" ? .2 : 0, stroke:c, "stroke-width":n.kind === "box" ? 3 : 1.5}, grp);
+    badge(grp, g.x, g.y, n.n, c);
+  }
+  return grp;
+}
+const visible = n => cats.has(n.cat) && (showDone || !n.done);
+function renderMarks() {
+  ov.setAttribute("viewBox", `0 0 ${D.vp} ${D.docH}`);
+  ov.innerHTML = "";
+  const defs = el("defs", {}, ov);
+  CATS.forEach(([id]) => { const m = el("marker", {id:"ah-"+id, viewBox:"0 0 10 10", refX:8, refY:5, markerWidth:5, markerHeight:5, orient:"auto-start-reverse"}, defs); el("path", {d:"M0,0L10,5L0,10z", fill:col(id)}, m); });
+  const list = D.notes.filter(visible);
+  list.filter(n => n.id !== selected).forEach(n => drawMark(n, ov, false));
+  const s = list.find(n => n.id === selected); if (s) drawMark(s, ov, true);
+}
+const topOf = g => g ? (g.y ?? Math.min(g.y1, g.y2)) : 0;
+function scrollToNote(n, flash) {
+  if (!n.geom) return;
+  const s = phone.clientHeight / D.docH;
+  const target = phone.offsetTop + topOf(n.geom) * s - proof.clientHeight / 3;
+  proof.scrollTo({top: Math.max(0, target), behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth"});
+  if (flash) setTimeout(() => ov.querySelector(`.mark[data-id="${n.id}"]`)?.classList.add("flash"), 350);
+}
+function select(id, from) {
+  selected = id; renderMarks(); renderList();
+  const n = D.notes.find(x => x.id === id); if (!n) return;
+  if (from === "list") { setView("page"); scrollToNote(n, true); }
+  if (from === "mark") {
+    if (innerWidth <= 900) showSheet(n);
+    else document.querySelector(`.note[data-id="${id}"]`)?.scrollIntoView({block:"nearest", behavior:"smooth"});
+  }
+}
+ov.addEventListener("click", e => { const g = e.target.closest(".mark"); if (g) select(g.dataset.id, "mark"); });
+ov.addEventListener("keydown", e => { if (e.key === "Enter") { const g = e.target.closest(".mark"); if (g) select(g.dataset.id, "mark"); } });
+
+/* ---------- close-up crops ---------- */
+let cropsReady = Promise.all(imgs.map(i => i.decode ? i.decode().catch(() => {}) : new Promise(r => { i.onload = r; })));
+const crops = {};
+function bbox(n) {
+  const g = n.geom; if (!g) return null;
+  if (g.w != null) return {x:g.x, y:g.y, w:g.w, h:g.h};
+  if (g.x1 != null) return {x:Math.min(g.x1,g.x2), y:Math.min(g.y1,g.y2), w:Math.abs(g.x2-g.x1), h:Math.abs(g.y2-g.y1)};
+  return n.kind === "sticker" ? {x:g.x, y:g.y-12, w:n.sticker.length * 6.6 + 40, h:24} : {x:g.x, y:g.y-30, w:1, h:60};
+}
+async function makeCrop(n) {
+  const b = bbox(n); if (!b) return null;
+  await cropsReady;
+  const pad = 40, minW = 300, minH = n.kind === "pin" || n.kind === "sticker" ? 180 : 140;
+  let w = Math.max(b.w + pad * 2, minW), h = Math.max(b.h + pad * 2, minH);
+  w = Math.min(w, D.vp); h = Math.min(h, 520);
+  let x = Math.max(0, Math.min(D.vp - w, b.x + b.w / 2 - w / 2)), y = Math.max(0, Math.min(D.docH - h, b.y + b.h / 2 - h / 2));
+  const scale = imgs[0].naturalWidth / D.vp || 2;
+  const cv = document.createElement("canvas"); cv.width = Math.round(w * scale); cv.height = Math.round(h * scale);
+  const ctx = cv.getContext("2d"); ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, cv.width, cv.height);
+  D.tiles.forEach((t, i) => {
+    if (t.y + t.h <= y || t.y >= y + h) return;
+    const im = imgs[i];
+    ctx.drawImage(im, 0, 0, im.naturalWidth, im.naturalHeight, -x * scale, (t.y - y) * scale, D.vp * scale, t.h * scale);
+  });
+  // draw the mark on top
+  const svg = document.createElementNS(SVGNS, "svg");
+  svg.setAttribute("xmlns", SVGNS); svg.setAttribute("viewBox", `${x} ${y} ${w} ${h}`); svg.setAttribute("width", cv.width); svg.setAttribute("height", cv.height);
+  svg.setAttribute("font-family", "Helvetica, Arial, sans-serif");
+  const defs = el("defs", {}, svg); const m = el("marker", {id:"ah-"+n.cat, viewBox:"0 0 10 10", refX:8, refY:5, markerWidth:5, markerHeight:5, orient:"auto-start-reverse"}, defs); el("path", {d:"M0,0L10,5L0,10z", fill:col(n.cat)}, m);
+  drawMark(n, svg, false);
+  const im = new Image();
+  await new Promise(r => { im.onload = r; im.onerror = r; im.src = "data:image/svg+xml;charset=utf-8," + encodeURIComponent(new XMLSerializer().serializeToString(svg)); });
+  try { ctx.drawImage(im, 0, 0); } catch {}
+  return cv.toDataURL("image/jpeg", .85);
+}
+
+/* ---------- ledger ---------- */
+function renderFilters() {
+  const f = $("#filters");
+  f.innerHTML = CATS.map(([id, l]) => { const k = D.notes.filter(n => n.cat === id && (showDone || !n.done)).length; return k ? `<button type="button" class="chip" data-cat="${id}" style="--c:var(--c-${id})" aria-pressed="${cats.has(id)}">${l} ${k}</button>` : ""; }).join("");
+  const open = D.notes.filter(n => !n.done).length;
+  $("#sum").textContent = `${open} open${D.notes.length - open ? ` · ${D.notes.length - open} resolved` : ""}`;
+  $("#notesTab").textContent = `Notes (${open})`;
+}
+$("#filters").addEventListener("click", e => { const b = e.target.closest(".chip"); if (!b) return; const c = b.dataset.cat; cats.has(c) ? cats.delete(c) : cats.add(c); if (!cats.size) CATS.forEach(([id]) => cats.add(id)); renderFilters(); renderMarks(); renderList(); });
+$("#showDone").addEventListener("change", e => { showDone = e.target.checked; renderFilters(); renderMarks(); renderList(); });
+function noteHtml(n, withCrop) {
+  const kind = n.kind === "sticker" ? `Sticker · ${esc(n.sticker)}` : KIND[n.kind];
+  const where = n.geom ? `${Math.round(topOf(n.geom)).toLocaleString()}px down` : "not placed";
+  const chg = (n.from || n.to) ? `<div class="chg">${n.from ? `<s>${esc(n.from)}</s>` : ""}${n.to ? `<span>→</span><b>${esc(n.to)}</b>` : ""}</div>` : "";
+  return `<div class="num">${n.n}</div>
+    <div class="nmeta"><span class="k">${LABEL[n.cat]}</span><span>${kind}</span><span>${where}</span>${n.done ? "<span>Resolved</span>" : ""}</div>
+    <div class="ntext${n.note ? "" : " none"}">${n.note ? esc(n.note) : "No written note"}</div>
+    ${chg}
+    ${n.styles ? `<div class="spec">${esc(n.styles)}${n.spacing ? "<br>" + esc(n.spacing) : ""}</div>` : ""}
+    ${withCrop && crops[n.id] ? `<img class="crop" alt="Close-up of note ${n.n}" src="${crops[n.id]}">` : ""}`;
+}
+function renderList() {
+  const items = D.notes.filter(visible);
+  $("#list").innerHTML = items.length ? items.map(n => `<div class="note${n.id === selected ? " sel" : ""}${n.done ? " done" : ""}" data-id="${n.id}" style="--c:var(--c-${n.cat})" tabindex="0" role="button">${noteHtml(n, true)}</div>`).join("")
+    : `<p class="sum" style="text-align:center;padding:16px">No notes in these categories.</p>`;
+}
+$("#list").addEventListener("click", e => { const c = e.target.closest(".note"); if (c) select(c.dataset.id, "list"); });
+$("#list").addEventListener("keydown", e => { if (e.key === "Enter") { const c = e.target.closest(".note"); if (c) select(c.dataset.id, "list"); } });
+function showSheet(n) {
+  const s = $("#sheet");
+  s.innerHTML = `<button class="close" type="button" aria-label="Close">×</button><div class="note" style="--c:var(--c-${n.cat});border:none;padding:0;cursor:default">${noteHtml(n, false)}</div>`;
+  s.hidden = false; s.querySelector(".close").onclick = () => { s.hidden = true; };
+}
+
+/* ---------- view tabs ---------- */
+function setView(v) { $("#main").dataset.view = v; document.querySelectorAll(".tabs button").forEach(b => b.setAttribute("aria-pressed", b.dataset.view === v)); if (v === "page") requestAnimationFrame(layout); $("#sheet").hidden = true; }
+document.querySelectorAll(".tabs button").forEach(b => b.onclick = () => setView(b.dataset.view));
+
+/* ---------- copy as text ---------- */
+function asText() {
+  const L = [`*${D.title}*`, `Review: ${location.href.split("#")[0]}`, `Page: ${D.url} · mobile ${D.vp}px · captured ${fmtDate(D.capturedAt)}`];
+  for (const [id, l] of CATS) {
+    const g = D.notes.filter(n => n.cat === id && !n.done); if (!g.length) continue;
+    L.push("", `*${l} (${g.length})*`);
+    for (const n of g) {
+      const tag = n.kind === "sticker" ? `[${n.sticker}] ` : n.kind === "measure" ? `[gap ${n.from}] ` : "";
+      let line = `• ${n.n}. ${tag}${(n.note || "(no note)").trim().replace(/\s*\n\s*/g, " ")}`;
+      if (n.kind !== "measure" && (n.from || n.to)) line += ` \`${n.from || "?"} → ${n.to || "?"}\``;
+      else if (n.kind === "measure" && n.to) line += ` \`→ ${n.to}\``;
+      L.push(line);
+    }
+  }
+  return L.join("\n");
+}
+let tt; function toast(m) { const t = $("#toast"); t.textContent = m; t.hidden = false; clearTimeout(tt); tt = setTimeout(() => t.hidden = true, 2400); }
+$("#copy").onclick = async () => {
+  const text = asText();
+  try { await navigator.clipboard.writeText(text); toast("Notes copied"); }
+  catch { const ta = document.createElement("textarea"); ta.value = text; document.body.appendChild(ta); ta.select(); try { document.execCommand("copy"); toast("Notes copied"); } catch { toast("Copy blocked by the browser"); } ta.remove(); }
+};
+
+layout(); renderFilters(); renderMarks(); renderList();
+(async () => { for (const n of D.notes) { try { crops[n.id] = await makeCrop(n); } catch {} } renderList(); })();
+})();
+</script>
+</body>
+</html>
